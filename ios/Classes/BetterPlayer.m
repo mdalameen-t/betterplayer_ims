@@ -13,6 +13,7 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
 static void* presentationSizeContext = &presentationSizeContext;
 
 
+
 #if TARGET_OS_IOS
 void (^__strong _Nonnull _restoreUserInterfaceForPIPStopCompletionHandler)(BOOL);
 API_AVAILABLE(ios(9.0))
@@ -33,13 +34,79 @@ AVPictureInPictureController *_pipController;
         _player.automaticallyWaitsToMinimizeStalling = false;
     }
     self._observersAdded = false;
+   [self setupAdsLoader];
     return self;
 }
 
+- (void)setupAdsLoader {
+    self.adsLoader = [[IMAAdsLoader alloc] init];
+    self.adsLoader.delegate = self;
+
+}
+
+#pragma mark - IMAAdsLoaderDelegate
+
+- (void)adsLoader:(IMAAdsLoader *)loader adsLoadedWithData:(IMAAdsLoadedData *)adsLoadedData {
+  // Initialize and listen to the ads manager loaded for this request.
+  self.adsManager = adsLoadedData.adsManager;
+  self.adsManager.delegate = self;
+//  [self.adsManager initializeWithAdsRenderingSettings:nil];
+    UIViewController* vc = [[[UIApplication sharedApplication] keyWindow] rootViewController];
+    IMAAdsRenderingSettings* adsRenderingSettings = [IMAAdDisplayContainer alloc];
+    [adsRenderingSettings linkOpenerPresentingController: vc];
+    
+}
+
+- (void)adsLoader:(IMAAdsLoader *)loader failedWithErrorData:(IMAAdLoadingErrorData *)adErrorData {
+  // Fall back to playing content.
+  NSLog(@"Error loading ads: %@", adErrorData.adError.message);
+  [self.playerView.player play];
+}
+
+#pragma mark - IMAAdsManagerDelegate
+
+- (void)adsManager:(IMAAdsManager *)adsManager didReceiveAdEvent:(IMAAdEvent *)event {
+  // Play each ad once it has loaded.
+  if (event.type == kIMAAdEvent_LOADED) {
+    [adsManager start];
+  }
+}
+
+
+- (void)requestAds {
+    NSLog(@"reached requestAds");
+  // Pass the main view as the container for ad display.
+    UIViewController* vc = [[[UIApplication sharedApplication] keyWindow] rootViewController];
+    IMAAdDisplayContainer *adDisplayContainer = [[IMAAdDisplayContainer alloc] initWithAdContainer:self.mainView viewController:vc];
+//    IMAAdDisplayContainer *adDisplayContainer = [[IMAAdDisplayContainer alloc] initWithAdContainer:self.mainView];
+    IMAAdsRequest *request = [[IMAAdsRequest alloc] initWithAdTagUrl:kAdTagURLString adDisplayContainer:adDisplayContainer contentPlayhead:self.contentPlayhead userContext:nil];
+  [self.adsLoader requestAdsWithRequest:request];
+}
+
 - (nonnull UIView *)view {
-    BetterPlayerView *playerView = [[BetterPlayerView alloc] initWithFrame:CGRectZero];
+    UIView *mainView = [[UIView alloc]initWithFrame:CGRectZero];
+    NSLog(@"Reached creating view");
+//    BetterPlayerView *playerView = [[BetterPlayerView alloc] initWithFrame:CGRectZero];
+//    TODO: init with CGRectZero make the video layer not appearing, so need to find a way to fix that, till that hardcoding  dimention
+    BetterPlayerView *playerView = [[BetterPlayerView alloc] initWithFrame:CGRectMake(0, 0, 360, 212)];
     playerView.player = _player;
-    return playerView;
+    self.playerView = playerView;
+    [mainView addSubview:playerView];
+    self.mainView = mainView;
+//    [childView setBackgroundColor:[UIColor blueColor]];
+    
+    self.contentPlayhead =
+          [[IMAAVPlayerContentPlayhead alloc] initWithAVPlayer:playerView.player];
+    
+    NSTimeInterval delayInSeconds = 10.0;
+    dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
+    dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+      NSLog(@"Do some work");
+        [self requestAds];
+    });
+    
+    
+    return mainView;
 }
 
 - (void)addObservers:(AVPlayerItem*)item {
@@ -64,6 +131,7 @@ AVPictureInPictureController *_pipController;
                                                  selector:@selector(itemDidPlayToEndTime:)
                                                      name:AVPlayerItemDidPlayToEndTimeNotification
                                                    object:item];
+                                                   
         self._observersAdded = true;
     }
 }
@@ -114,6 +182,7 @@ AVPictureInPictureController *_pipController;
         AVPlayerItem* p = [notification object];
         [p seekToTime:kCMTimeZero completionHandler:nil];
     } else {
+        [self.adsLoader contentComplete];
         if (_eventSink) {
             _eventSink(@{@"event" : @"completed", @"key" : _key});
             [ self removeObservers];
@@ -158,6 +227,8 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
         width = videoTrack.naturalSize.height;
         height = videoTrack.naturalSize.width;
     }
+    NSLog(@"~~~> reached transform");
+    [self updateControlDimension :width: height];
     videoComposition.renderSize = CGSizeMake(width, height);
 
     float nominalFrameRate = videoTrack.nominalFrameRate;
@@ -446,6 +517,8 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
         CGSize size = [_player currentItem].presentationSize;
         CGFloat width = size.width;
         CGFloat height = size.height;
+        NSLog(@"~~~> reached ready to play");
+        [self updateControlDimension :width: height];
 
 
         AVAsset *asset = _player.currentItem.asset;
@@ -572,6 +645,19 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
     }
 }
 
+-(void)updateControlDimension:(int) width: (int) height{
+    NSLog(@"~~~> reached updateDimention width:%i, height:%i", width, height);
+    CGRect newFrame = self.playerView.frame;
+    newFrame.size.width = width;
+    newFrame.size.height = height;
+    [self.playerView setFrame:newFrame];
+    
+    CGRect cFrame = self.mainView.frame;
+    cFrame.size.width = width;
+    cFrame.size.height = height;
+    [self.mainView setFrame:cFrame];
+}
+
 
 - (void)setTrackParameters:(int) width: (int) height: (int)bitrate {
     _player.currentItem.preferredPeakBitRate = bitrate;
@@ -579,6 +665,9 @@ static inline CGFloat radiansToDegrees(CGFloat radians) {
         if (width == 0 && height == 0){
             _player.currentItem.preferredMaximumResolution = CGSizeZero;
         } else {
+//            self.controlView.frame.size = CGSizeMake(width, height);
+            NSLog(@"~~~> reached setTrackParams");
+            [self updateControlDimension :width: height];
             _player.currentItem.preferredMaximumResolution = CGSizeMake(width, height);
         }
     }

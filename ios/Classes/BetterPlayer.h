@@ -10,12 +10,19 @@
 #import "BetterPlayerTimeUtils.h"
 #import "BetterPlayerView.h"
 #import "BetterPlayerEzDrmAssetsLoaderDelegate.h"
+#import <GoogleInteractiveMediaAds/GoogleInteractiveMediaAds.h>
+//static NSString *const kAdTagURLString = @"https://pubads.g.doubleclick.net/gampad/ads?"
+//    @"iu=/21775744923/external/vmap_ad_samples&sz=640x480&"
+//    @"cust_params=sample_ar%3Dpremidpostlongpod&"
+//    @"ciu_szs=300x250&gdfp_req=1&ad_rule=1&output=vmap&unviewed_position_start=1&"
+//    @"env=vp&impl=s&cmsid=496&vid=short_onecue&correlator=";
+static NSString *const kAdTagURLString = @"https://pubads.g.doubleclick.net/gampad/ads?iu=/21775744923/external/single_preroll_skippable&sz=640x480&ciu_szs=300x250%2C728x90&gdfp_req=1&output=vast&unviewed_position_start=1&env=vp&impl=s&correlator=";
 
 NS_ASSUME_NONNULL_BEGIN
 
 @class CacheManager;
 
-@interface BetterPlayer : NSObject <FlutterPlatformView, FlutterStreamHandler, AVPictureInPictureControllerDelegate>
+@interface BetterPlayer : NSObject <FlutterPlatformView, FlutterStreamHandler, AVPictureInPictureControllerDelegate, IMAAdsLoaderDelegate, IMAAdsManagerDelegate>
 @property(readonly, nonatomic) AVPlayer* player;
 @property(readonly, nonatomic) BetterPlayerEzDrmAssetsLoaderDelegate* loaderDelegate;
 @property(nonatomic) FlutterEventChannel* eventChannel;
@@ -28,6 +35,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) NSString* key;
 @property(nonatomic, readonly) int failedCount;
 @property(nonatomic) AVPlayerLayer* _playerLayer;
+@property(nonatomic) UIView* mainView;
+@property(nonatomic) BetterPlayerView* playerView;
 @property(nonatomic) bool _pictureInPicture;
 @property(nonatomic) bool _observersAdded;
 @property(nonatomic) int stalledCount;
@@ -35,6 +44,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic) float playerRate;
 @property(nonatomic) int overriddenDuration;
 @property(nonatomic) AVPlayerTimeControlStatus lastAvPlayerTimeControlStatus;
+@property(nonatomic) IMAAVPlayerContentPlayhead *contentPlayhead;
+@property(nonatomic) IMAAdsLoader *adsLoader;
+@property(nonatomic) IMAAdsManager *adsManager;
+- (void)updateControlDimension:(int) width:(int) height;
 - (void)play;
 - (void)pause;
 - (void)setIsLooping:(bool)isLooping;
